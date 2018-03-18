@@ -2,6 +2,7 @@
 
 import unittest
 import time
+import threading
 
 import libsoundtouch
 from libsoundtouch.device import NoSlavesException, NoExistingZoneException, \
@@ -1127,8 +1128,10 @@ class TestLibSoundTouch(unittest.TestCase):
     @mock.patch('socket.inet_ntoa', return_value='192.168.1.1')
     @mock.patch('zeroconf.ServiceBrowser.__init__', return_value=None,
                 side_effect=_mocked_service_browser)
+    @mock.patch('zeroconf.ServiceBrowser.cancel', return_value=None)
     def test_discover_devices(self, mocked_service_browser, mocked_inet_ntoa,
-                              mocked_request_get):
+                              mocked_request_get, browser_cancel):
+
         devices = libsoundtouch.discover_devices(timeout=1)
         self.assertEqual(mocked_service_browser.call_count, 1)
         self.assertEqual(mocked_inet_ntoa.call_count, 1)
@@ -1136,6 +1139,7 @@ class TestLibSoundTouch(unittest.TestCase):
         self.assertEqual(len(devices), 1)
         self.assertEqual(devices[0].host, "192.168.1.1")
         self.assertEqual(devices[0].port, 8090)
+        self.assertEqual(browser_cancel.call_count, 1)
 
     @mock.patch('requests.post', side_effect=_mocked_select_bluetooth)
     def test_select_bluetooth(self, mocked_select_bluetooth):
@@ -1166,3 +1170,13 @@ class TestLibSoundTouch(unittest.TestCase):
         device.restore()
         self.assertEqual(mocked_device_status.call_count, 1)
         self.assertEqual(mocked_select_content_item.call_count, 1)
+
+    def test_discover_devices_threadcount(self):
+        zc = zeroconf.Zeroconf()
+
+        origin_threadcount = threading.active_count()
+
+        libsoundtouch.discover_devices(timeout=0.1, zeroconf=zc)
+        libsoundtouch.discover_devices(timeout=0.1, zeroconf=zc)
+
+        self.assertGreaterEqual(origin_threadcount, threading.active_count())
